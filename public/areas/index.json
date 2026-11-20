@@ -3,5 +3,10 @@
     "id": "phoenix",
     "name": "Downtown Phoenix",
     "city": "Phoenix, Arizona"
+  },
+  {
+    "id": "barcelona",
+    "name": "Eixample",
+    "city": "Barcelona, Spain"
   }
 ]
