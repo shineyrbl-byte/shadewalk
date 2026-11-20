@@ -141,7 +141,7 @@ export default function App() {
     const s = b.getSouth(), w = b.getWest(), n = b.getNorth(), e = b.getEast();
     const km2 = ((n - s) * 110.54) * ((e - w) * 111.32 * Math.cos(((s + n) / 2) * Math.PI / 180));
     if (km2 > 3.5) { setError(`That view is ${km2.toFixed(1)} km². Zoom in to under 3.5 km² (about a 1.8 km square) and try again.`); return; }
-    setLoading("Downloading buildings, trees and streets from OpenStreetMap…");
+    setLoading("Downloading buildings, trees and streets from OpenStreetMap… (up to a minute)");
     setError("");
     try {
       const json = await fetchOverpass(overpassQuery(s, w, n, e));
@@ -409,12 +409,12 @@ Thank you,
   );
 }
 
-// Ask our own proxy first (no CORS problems, retries mirrors server-side), then try Overpass directly.
+// Downloads go through our own proxy (/api/overpass), because OpenStreetMap's Overpass servers
+// reject browser user agents. In local development there's no proxy, so it calls a mirror directly.
 async function fetchOverpass(query: string) {
-  const attempts: [string, RequestInit][] = [
-    ["/api/overpass", { method: "POST", body: query }],
-    ["https://overpass-api.de/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(query) }],
-  ];
+  const attempts: [string, RequestInit][] = location.hostname === "localhost"
+    ? [["https://overpass.private.coffee/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(query) }]]
+    : [["/api/overpass", { method: "POST", body: query }]];
   let last = "";
   for (const [url, init] of attempts) {
     const ctrl = new AbortController();

@@ -1,10 +1,12 @@
 // Proxy for OpenStreetMap's Overpass API. Calling it from the server avoids browser CORS errors
 // (Overpass's "busy" responses carry no CORS headers) and lets us retry and fall back to mirrors.
-const ENDPOINTS = [
-  "https://overpass-api.de/api/interpreter",
-  "https://overpass.private.coffee/api/interpreter",
-  "https://overpass-api.de/api/interpreter",
-  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+// The main server answers most queries but can take 30-40 s for a neighbourhood, so it gets most
+// of the time budget. It also rejects generic user agents (406), which is why browsers can't call it
+// directly and this proxy sends a descriptive one.
+const ENDPOINTS: [string, number][] = [
+  ["https://overpass-api.de/api/interpreter", 48_000],
+  ["https://overpass.private.coffee/api/interpreter", 20_000],
+  ["https://maps.mail.ru/osm/tools/overpass/api/interpreter", 15_000],
 ];
 
 export async function GET(): Promise<Response> {
@@ -19,11 +21,11 @@ export async function POST(req: Request): Promise<Response> {
   }
   const started = Date.now();
   let last = "";
-  for (const url of ENDPOINTS) {
-    const left = 55_000 - (Date.now() - started);
-    if (left < 5_000) break;
+  for (const [url, budget] of ENDPOINTS) {
+    const left = 57_000 - (Date.now() - started);
+    if (left < 4_000) break;
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), Math.min(25_000, left));
+    const timer = setTimeout(() => ctrl.abort(), Math.min(budget, left));
     try {
       const res = await fetch(url, {
         method: "POST",
