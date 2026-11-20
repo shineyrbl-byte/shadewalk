@@ -11,13 +11,20 @@ if (!id || !bbox) {
 const bounds = bbox.split(",").map(Number) as [number, number, number, number];
 const pair = (v?: string) => (v ? (v.split(",").map(Number) as [number, number]) : undefined);
 
-const ENDPOINTS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
+// The main server can be briefly busy (502/504), so try it a few times before the mirror
+const ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+];
 let json: { elements: never[] } | null = null;
 for (const url of ENDPOINTS) {
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": "shadewalk-area-fetch" },
+      headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": "Shadewalk area fetch (https://github.com/shineyrbl-byte/shadewalk)" },
+      signal: AbortSignal.timeout(120_000),
       body: "data=" + encodeURIComponent(overpassQuery(...bounds)),
     });
     if (!res.ok) throw new Error(`${res.status}`);
@@ -25,6 +32,7 @@ for (const url of ENDPOINTS) {
     break;
   } catch (e) {
     console.warn(`${url} failed: ${(e as Error).message}`);
+    await new Promise((r) => setTimeout(r, 8000));
   }
 }
 if (!json) process.exit(1);
