@@ -155,3 +155,16 @@ test("day profile: a wall's shade moves with the sun", () => {
   const noon = prof.find((p) => p.min === 12 * 60)!;
   assert.ok(noon.shade[0] > 0.9, `winter noon shade ${noon.shade[0]}`);
 });
+
+import { isCovered } from "../src/lib/osm.ts";
+
+test("covered walkways and arcades are always shade", () => {
+  assert.ok(isCovered({ highway: "footway", covered: "yes" }));
+  assert.ok(isCovered({ highway: "footway", covered: "arcade" }));
+  assert.ok(isCovered({ highway: "footway", tunnel: "building_passage" }));
+  assert.ok(!isCovered({ highway: "footway" }));
+  const area = blank({ nodes: [0, 0, 50, 0], edges: [{ a: 0, b: 1, len: 50, way: 0, half: 0, cov: 1 }] });
+  const m = new ShadeModel(area);
+  m.setSun({ altitude: 70, azimuth: 180 });
+  assert.equal(edgeSun(m, area).sun[0], 0);
+});

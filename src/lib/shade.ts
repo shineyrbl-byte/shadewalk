@@ -154,6 +154,7 @@ export function edgeSun(model: ShadeModel, area: Area, which?: Iterable<number>)
   const list = which ?? area.edges.keys();
   for (const i of list) {
     const e = area.edges[i];
+    if (e.cov) { sun[i] = 0; side[i] = 0; continue; } // covered walkway: always shade
     const ax = n[e.a * 2], ay = n[e.a * 2 + 1], bx = n[e.b * 2], by = n[e.b * 2 + 1];
     const steps = Math.max(1, Math.round(e.len / SAMPLE_STEP));
     // Roads: try both sidewalks (offset by the road's half width) and walk on the shadier one

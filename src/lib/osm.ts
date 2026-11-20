@@ -6,7 +6,7 @@ export interface Building { poly: number[]; h: number }
 export interface Tree { x: number; y: number; r: number; h: number }
 export type PoiKind = "water" | "bench" | "shelter" | "library" | "toilets";
 export interface Poi { x: number; y: number; kind: PoiKind; name?: string }
-export interface Edge { a: number; b: number; len: number; way: number; half: number }
+export interface Edge { a: number; b: number; len: number; way: number; half: number; cov?: 1 }
 
 export interface Area {
   id: string;
@@ -90,6 +90,13 @@ interface OsmElement {
   tags?: Record<string, string>;
 }
 
+/** Arcades, colonnades, covered walkways and passages under buildings are always in shade. */
+export function isCovered(tags: Record<string, string>): boolean {
+  return ["yes", "arcade", "colonnade", "roof", "covered"].includes(tags.covered ?? "")
+    || tags.tunnel === "building_passage" || tags.tunnel === "yes" || tags.layer?.startsWith("-") === true
+    || tags.highway === "corridor";
+}
+
 function walkable(tags: Record<string, string>): number | null {
   const half = WALK_HALF_WIDTH[tags.highway];
   if (half === undefined) return null;
@@ -164,6 +171,7 @@ export function parseOverpass(
       if (half === null) continue;
       const wayIdx = ways.length;
       ways.push({ name: tags.name ?? "", kind: tags.highway });
+      const cov = isCovered(tags);
       let prev = -1;
       el.nodes.forEach((osmId, i) => {
         const g = el.geometry![i];
@@ -176,7 +184,7 @@ export function parseOverpass(
         }
         if (prev >= 0 && prev !== idx) {
           const len = Math.hypot(nodes[idx * 2] - nodes[prev * 2], nodes[idx * 2 + 1] - nodes[prev * 2 + 1]);
-          rawEdges.push({ a: prev, b: idx, len: r1(len), way: wayIdx, half });
+          rawEdges.push({ a: prev, b: idx, len: r1(len), way: wayIdx, half, ...(cov ? { cov: 1 as const } : {}) });
         }
         prev = idx;
       });
