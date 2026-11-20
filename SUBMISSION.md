@@ -23,6 +23,10 @@ Pick a start, a destination and a time, and Shadewalk shows two routes:
 
 - 🌳 **The coolest route** next to 📏 **the shortest one**. In downtown Phoenix on a July afternoon, the shortest route is 38% shaded. The coolest is **84% shaded for 1.3 extra minutes**, which means 6.5 fewer minutes in direct sun.
 - 🛣️ **The shady sidewalk.** On wider roads it checks both sidewalks and walks you on the shadier one.
+- 🌡️ **Real heat warnings.** The actual "feels like" temperature for that place and time (Open-Meteo), graded with US National Weather Service danger levels. Phoenix on 15 July at 4pm: 40 °C, feels like 41 °C, **Danger**.
+- 🧭 **Turn-by-turn directions** that tell you which sidewalk is shady: "Turn right onto East Van Buren Street · 285 m · walk on the north side."
+- ♿ **Step-free routing and walking pace** for wheelchair users, strollers, kids and older walkers.
+- ⛱️ **Covered walkways count as shade**: arcades, colonnades and passages under buildings.
 - ⏰ **Best time to leave.** A chart of shade on both routes from sunrise to sunset: "Leave at 6:00pm and it's 98% shaded."
 - ▶ **Play the day.** Watch the shadows sweep across the city from sunrise to sunset.
 - 🧊 **Cool stops** along the route: drinking water, shelters, libraries, toilets and benches.
@@ -36,6 +40,8 @@ It works **anywhere**. Phoenix and Barcelona are built in, and *Scan this view* 
 - **Sun position.** I implemented the standard astronomical formulas for the sun's altitude and compass direction at any place and time, and tested them against known values: about 80° at noon on the June solstice in Phoenix, about 33° in December.
 - **OpenStreetMap → 3D city.** A parser turns OSM data into buildings with heights (explicit height, else floors × 3.2 m, else a typical height for the building type), tree canopies, the walking network and cool stops. Palms get a tiny canopy, because they barely shade you.
 - **The shadow engine.** To decide whether a point is in shade, I cast a ray towards the sun. A building of height \\(h\\) can only block it within \\(h / \tan(\text{altitude})\\) metres, so I test that segment against nearby footprints using a spatial grid. Trees are canopy discs between 35% and 100% of their height. Every street is sampled every 5 m (on both sidewalks for wider roads). The whole 144 km downtown Phoenix network takes **30–80 ms**, so shadows and routes update live as you drag the time slider.
+- **Real temperatures.** Hourly temperature and "feels like" values from the Open-Meteo API (forecast for recent and upcoming days, the archive for older ones), graded with NWS heat-index categories and drawn on the day chart.
+- **Directions.** The route is grouped into streets and turns, and the shadier sidewalk is named by compass side, which flips correctly whichever way you walk.
 - **Routing.** A* search where each segment costs
 
 $$\text{cost} = \text{length} \times (1 + \text{heat} \times \text{share in sun})$$
@@ -59,14 +65,14 @@ Heat 0 gives the shortest path, and the "how much do you want to avoid the sun?"
 - Shade is a fairness issue. The streets with no trees are often the ones people *have* to walk.
 
 ## What's next
-- Awnings, arcades and bus shelters, plus tree data from city open-data portals.
-- Heat forecasts, so it can warn on dangerous days and plan around the hottest hours.
+- Awnings and bus shelters, plus tree data from city open-data portals.
+- Combining temperature and shade into one "heat exposure" score when suggesting the best time to leave.
 - A "school routes" mode so parents and schools can map the coolest walks to school.
 - Working with community groups to send sun-trap reports to councils.
 ```
 
 ## Built with
-typescript, react, vite, leaflet, openstreetmap, overpass-api, html5-canvas, vercel, serverless, node.js, css, claude
+typescript, react, vite, leaflet, openstreetmap, overpass-api, open-meteo, html5-canvas, geolocation-api, vercel, serverless, node.js, css, claude
 
 ## "Try it out" links
 - https://shadewalk-beta.vercel.app
@@ -82,7 +88,7 @@ Yes. I used Claude (Anthropic) via Claude Code to brainstorm, write much of the 
 [Your name]
 
 ## Gallery (docs/gallery, 1500×1000)
-1-coolest-vs-shortest, 2-shadows-up-close, 3-best-time-to-leave, 4-streets-that-need-trees, 5-letter-to-the-council, 6-barcelona, 7-evening-long-shadows, 8-on-your-phone
+1-coolest-vs-shortest, 2-shadows-up-close, 3-best-time-to-leave, 4-streets-that-need-trees, 5-letter-to-the-council, 6-barcelona, 7-evening-long-shadows, 8-on-your-phone, 9-heat-warning, 10-turn-by-turn-shady-side
 
 ## Optional demo video script (about 1:30)
 | Time | Screen | Voiceover |
