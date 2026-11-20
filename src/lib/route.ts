@@ -111,12 +111,15 @@ export interface RouteStats {
   sunMinutes: number;
 }
 
-export function routeStats(area: Area, path: number[], sun: Float32Array): RouteStats {
+export function routeStats(area: Area, path: number[], sun: Float32Array, speed = WALK_SPEED): RouteStats {
   let length = 0, sunMeters = 0;
   for (const e of path) { length += area.edges[e].len; sunMeters += area.edges[e].len * sun[e]; }
-  const minutes = length / WALK_SPEED / 60;
-  return { length, sunMeters, shade: length ? 1 - sunMeters / length : 1, minutes, sunMinutes: sunMeters / WALK_SPEED / 60 };
+  const minutes = length / speed / 60;
+  return { length, sunMeters, shade: length ? 1 - sunMeters / length : 1, minutes, sunMinutes: sunMeters / speed / 60 };
 }
+
+/** True for stairs, so step-free routing can skip them. */
+export const isSteps = (area: Area, edge: number) => area.ways[area.edges[edge].way].kind === "steps";
 
 /** The node ids along a path, in walking order. */
 export function pathNodes(area: Area, path: number[], src: number): number[] {

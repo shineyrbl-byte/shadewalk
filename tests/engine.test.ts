@@ -168,3 +168,51 @@ test("covered walkways and arcades are always shade", () => {
   m.setSun({ altitude: 70, azimuth: 180 });
   assert.equal(edgeSun(m, area).sun[0], 0);
 });
+
+import { directions } from "../src/lib/directions.ts";
+import { isSteps } from "../src/lib/route.ts";
+
+test("directions: streets, turns and the shadier sidewalk", () => {
+  // Walk east along Main St (100 m), then turn left (north) up Oak Ave (80 m)
+  const area = blank({
+    nodes: [0, 0, 100, 0, 100, 80],
+    edges: [
+      { a: 0, b: 1, len: 100, way: 0, half: 5 },
+      { a: 1, b: 2, len: 80, way: 1, half: 5 },
+    ],
+    ways: [{ name: "Main St", kind: "residential" }, { name: "Oak Ave", kind: "residential" }],
+  });
+  const sun = Float32Array.from([0.2, 1]);
+  // edge 0 drawn west→east: side 1 = left of travel = north side; edge 1 drawn south→north: side -1 = right = east side
+  const side = Int8Array.from([1, -1]);
+  const steps = directions(area, [0, 1], [0, 1, 2], sun, side);
+  assert.equal(steps.length, 2);
+  assert.equal(steps[0].text, "Head east on Main St");
+  assert.equal(steps[0].side, "north side");
+  assert.equal(steps[1].text, "Turn left onto Oak Ave");
+  assert.equal(steps[1].side, "east side");
+  assert.equal(steps[1].metres, 80);
+  // walking the same route backwards flips which way is left/right, but not the compass side
+  const back = directions(area, [1, 0], [2, 1, 0], sun, side);
+  assert.equal(back[0].side, "east side");
+  assert.equal(back[1].text, "Turn right onto Main St");
+});
+
+test("stairs can be avoided", () => {
+  const area = blank({ nodes: [0, 0, 1, 0], edges: [{ a: 0, b: 1, len: 1, way: 0, half: 0 }], ways: [{ name: "", kind: "steps" }] });
+  assert.ok(isSteps(area, 0));
+});
+
+import { atMinute, heatLevel } from "../src/lib/weather.ts";
+
+test("weather: interpolates hourly values and grades heat like the NWS", () => {
+  const s = Array.from({ length: 24 }, (_, h) => h);
+  assert.equal(atMinute(s, 15 * 60 + 30), 15.5);
+  assert.equal(atMinute([null, 5], 0), 5);
+  assert.equal(atMinute(null, 600), null);
+  assert.equal(heatLevel(20).level, 0);
+  assert.equal(heatLevel(30).label, "Caution");
+  assert.equal(heatLevel(35).label, "Extreme caution");
+  assert.equal(heatLevel(45).label, "Danger");
+  assert.equal(heatLevel(55).label, "Extreme danger");
+});
