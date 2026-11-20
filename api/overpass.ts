@@ -7,10 +7,11 @@ const ENDPOINTS = [
   "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ];
 
-export const config = { maxDuration: 60 };
+export async function GET(): Promise<Response> {
+  return new Response("POST an Overpass query", { status: 405 });
+}
 
-export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== "POST") return new Response("POST an Overpass query", { status: 405 });
+export async function POST(req: Request): Promise<Response> {
   const query = (await req.text()).slice(0, 2000);
   // Only allow the query Shadewalk builds: a bounding-box download, nothing else
   if (!query.startsWith("[out:json][timeout:90];") || !/^[\s\S]*out body geom;$/.test(query.trim())) {
