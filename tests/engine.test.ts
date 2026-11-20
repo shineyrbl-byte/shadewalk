@@ -117,3 +117,41 @@ test("the coolest route detours through shade, the shortest doesn't", () => {
   assert.equal(s.length, 140);
   assert.ok(s.shade > 0.6);
 });
+
+import { bestTime, stopsNear, sunTraps, networkShade, dayProfile } from "../src/lib/analysis.ts";
+
+test("analysis: sun traps, nearby stops, best time, network shade", () => {
+  const area = blank({
+    nodes: [0, 0, 200, 0, 0, 50, 200, 50],
+    edges: [
+      { a: 0, b: 1, len: 200, way: 0, half: 0 },
+      { a: 2, b: 3, len: 200, way: 1, half: 0 },
+    ],
+    ways: [{ name: "Hot Street", kind: "residential" }, { name: "Leafy Lane", kind: "residential" }],
+    pois: [{ x: 10, y: 5, kind: "water" }, { x: 100, y: 25, kind: "bench" }],
+  });
+  const sun = Float32Array.from([1, 0.1]);
+  const traps = sunTraps(area, sun);
+  assert.deepEqual(traps.map((t) => t.name), ["Hot Street"]);
+  assert.equal(traps[0].mid[0], 100);
+  assert.ok(Math.abs(networkShade(area, sun) - 0.45) < 1e-6);
+  assert.deepEqual(stopsNear(area, [0, 1]).map((p) => p.kind), ["water"]);
+  const profile = [{ min: 600, shade: [0.2] }, { min: 660, shade: [0.5] }, { min: 900, shade: [0.9] }];
+  assert.equal(bestTime(profile, 0, 620)!.min, 660); // 900 is outside the 2-hour window
+  assert.equal(bestTime(profile, 0, 620, 400)!.min, 900);
+});
+
+test("day profile: a wall's shade moves with the sun", () => {
+  // A wall south of an east-west street: the street is shaded around noon when the sun is
+  // in the south; with the low early sun in the east-northeast it's in the sun.
+  const area = blank({
+    origin: [33.45, -112.07], tz: "America/Phoenix",
+    nodes: [0, 0, 100, 0],
+    edges: [{ a: 0, b: 1, len: 100, way: 0, half: 0 }],
+    buildings: [{ poly: [-20, -12, 120, -12, 120, -4, -20, -4], h: 40 }],
+  });
+  const m = new ShadeModel(area);
+  const prof = dayProfile(m, area, [[0]], "2026-12-21", 9 * 60, 15 * 60, 60);
+  const noon = prof.find((p) => p.min === 12 * 60)!;
+  assert.ok(noon.shade[0] > 0.9, `winter noon shade ${noon.shade[0]}`);
+});
