@@ -409,28 +409,25 @@ Thank you,
   );
 }
 
-// OpenStreetMap's public Overpass servers get busy, so try the main one twice, then mirrors.
-const OVERPASS = [
-  "https://overpass-api.de/api/interpreter",
-  "https://overpass-api.de/api/interpreter",
-  "https://overpass.private.coffee/api/interpreter",
-  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-];
+// Ask our own proxy first (no CORS problems, retries mirrors server-side), then try Overpass directly.
 async function fetchOverpass(query: string) {
+  const attempts: [string, RequestInit][] = [
+    ["/api/overpass", { method: "POST", body: query }],
+    ["https://overpass-api.de/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(query) }],
+  ];
   let last = "";
-  for (const [i, url] of OVERPASS.entries()) {
+  for (const [url, init] of attempts) {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 45_000);
+    const timer = setTimeout(() => ctrl.abort(), 65_000);
     try {
-      const res = await fetch(url, { method: "POST", body: "data=" + encodeURIComponent(query), signal: ctrl.signal });
+      const res = await fetch(url, { ...init, signal: ctrl.signal });
       if (res.ok) return await res.json();
-      last = res.status === 429 ? "busy" : `error ${res.status}`;
+      last = `error ${res.status}`;
     } catch (e) {
       last = (e as Error).name === "AbortError" ? "timed out" : "unreachable";
     } finally {
       clearTimeout(timer);
     }
-    if (i === 0) await new Promise((r) => setTimeout(r, 2000));
   }
   throw new Error(`OpenStreetMap's servers are busy right now (${last}). Try again in a minute.`);
 }
