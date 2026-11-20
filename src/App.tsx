@@ -144,9 +144,7 @@ export default function App() {
     setLoading("Downloading buildings, trees and streets from OpenStreetMap…");
     setError("");
     try {
-      const res = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(overpassQuery(s, w, n, e)) });
-      if (!res.ok) throw new Error(res.status === 429 ? "OpenStreetMap's server is busy. Try again in a minute." : `Download failed (${res.status}).`);
-      const json = await res.json();
+      const json = await fetchOverpass(overpassQuery(s, w, n, e));
       // Use this browser's time zone if it roughly matches the place, else local solar time
       const lon = (w + e) / 2;
       const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -282,7 +280,7 @@ Thank you,
                     {same ? (
                       <>The shortest route is already the coolest: <strong>{Math.round(c.shade * 100)}% shade</strong>.</>
                     ) : (
-                      <><strong>{extra < 0.5 ? "Barely any" : `+${extra.toFixed(1)} min`}</strong> of walking for <strong>{savedSun.toFixed(1)} fewer minutes</strong> in direct sun.</>
+                      <>{extra < 0.5 ? <><strong>Almost no extra walking</strong> and</> : <><strong>+{extra.toFixed(1)} min</strong> of walking for</>} <strong>{savedSun.toFixed(1)} fewer minutes</strong> in direct sun.</>
                     )}
                   </p>
                   <div className="cards">
@@ -409,6 +407,32 @@ Thank you,
       </main>
     </div>
   );
+}
+
+// OpenStreetMap's public Overpass servers get busy, so try the main one twice, then mirrors.
+const OVERPASS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+];
+async function fetchOverpass(query: string) {
+  let last = "";
+  for (const [i, url] of OVERPASS.entries()) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 45_000);
+    try {
+      const res = await fetch(url, { method: "POST", body: "data=" + encodeURIComponent(query), signal: ctrl.signal });
+      if (res.ok) return await res.json();
+      last = res.status === 429 ? "busy" : `error ${res.status}`;
+    } catch (e) {
+      last = (e as Error).name === "AbortError" ? "timed out" : "unreachable";
+    } finally {
+      clearTimeout(timer);
+    }
+    if (i === 0) await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error(`OpenStreetMap's servers are busy right now (${last}). Try again in a minute.`);
 }
 
 function RouteCard({ title, stats, cls }: { title: string; stats: RouteStats; cls: string }) {
