@@ -1,8 +1,9 @@
 import type { ProfilePoint } from "../lib/analysis.ts";
 import { formatMinutes } from "../lib/sun.ts";
+import { atMinute } from "../lib/weather.ts";
 
-// Shade on both routes from sunrise to sunset. Click to jump to a time.
-export default function DayChart({ profile, now, best, onPick }: { profile: ProfilePoint[]; now: number; best: number | null; onPick: (min: number) => void }) {
+// Shade on both routes from sunrise to sunset (plus the "feels like" temperature). Click to jump to a time.
+export default function DayChart({ profile, now, best, feels, onPick }: { profile: ProfilePoint[]; now: number; best: number | null; feels: (number | null)[] | null; onPick: (min: number) => void }) {
   if (profile.length < 2) return null;
   const W = 320, H = 110, L = 30, R = 8, T = 10, B = 22;
   const t0 = profile[0].min, t1 = profile[profile.length - 1].min;
@@ -18,6 +19,12 @@ export default function DayChart({ profile, now, best, onPick }: { profile: Prof
     const m = t0 + ((fx - L) / (W - L - R)) * (t1 - t0);
     onPick(Math.max(t0, Math.min(t1, Math.round(m / 5) * 5)));
   };
+  // "Feels like" temperature on its own scale (right axis)
+  const temps = feels ? profile.map((p) => atMinute(feels, p.min)) : [];
+  const known = temps.filter((t): t is number => t != null);
+  const tMin = known.length ? Math.floor(Math.min(...known) / 5) * 5 : 0, tMax = known.length ? Math.ceil(Math.max(...known) / 5) * 5 : 1;
+  const ty = (t: number) => T + (1 - (t - tMin) / Math.max(1, tMax - tMin)) * (H - T - B);
+  const tempLine = known.length > 1 ? profile.map((p, i) => (temps[i] == null ? "" : `${i && temps[i - 1] != null ? "L" : "M"}${x(p.min).toFixed(1)},${ty(temps[i]!).toFixed(1)}`)).join("") : "";
   const bestP = best !== null ? profile.find((p) => p.min === best) : undefined;
   return (
     <figure className="chart">
@@ -32,11 +39,14 @@ export default function DayChart({ profile, now, best, onPick }: { profile: Prof
         <path d={area} className="cool-area" />
         <path d={line(1)} className="short-line" />
         <path d={line(0)} className="cool-line" />
+        {tempLine && <path d={tempLine} className="temp-line" />}
+        {tempLine && <text x={W - R} y={T + 8} textAnchor="end" className="axis temp">{tMax}°</text>}
+        {tempLine && <text x={W - R} y={H - B - 2} textAnchor="end" className="axis temp">{tMin}°</text>}
         {now >= t0 && now <= t1 && <line x1={x(now)} x2={x(now)} y1={T} y2={H - B} className="now" />}
         {bestP && <circle cx={x(bestP.min)} cy={y(bestP.shade[0])} r="4.5" className="best" />}
       </svg>
       <figcaption>
-        <span className="key cool" /> coolest route <span className="key short" /> shortest route · <span className="muted">tap to pick a time</span>
+        <span className="key cool" /> coolest route <span className="key short" /> shortest{feels ? <><span className="key temp" /> feels-like °C</> : null} · <span className="muted">tap to pick a time</span>
       </figcaption>
     </figure>
   );

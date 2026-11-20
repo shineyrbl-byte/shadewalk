@@ -88,6 +88,19 @@ input[type="range"] { flex: 1; accent-color: var(--cool); width: 100%; }
 .bar { height: 6px; border-radius: 99px; background: var(--sun); overflow: hidden; margin: 4px 0 6px; }
 .bar span { display: block; height: 100%; background: var(--cool); }
 .range-labels { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--muted); }
+.heat { border-radius: 10px; padding: 8px 10px; margin-top: 8px; font-size: 0.86rem; }
+.heat-2 { background: #fef3c7; color: #78350f; }
+.heat-3 { background: #fed7aa; color: #7c2d12; }
+.heat-4 { background: #fecaca; color: #7f1d1d; }
+.options { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 10px; font-size: 0.88rem; }
+.options label { display: inline-flex; gap: 6px; align-items: center; }
+.options input { accent-color: var(--cool); }
+.options select { padding: 3px 6px; }
+.btn.small { padding: 4px 10px; font-size: 0.82rem; }
+.steps { margin-top: 10px; }
+.steps summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }
+.steps ol { padding-left: 1.3rem; margin: 6px 0 0; font-size: 0.88rem; }
+.steps li { margin: 4px 0; }
 .callout { border-radius: 10px; padding: 8px 10px; margin-top: 8px; }
 .callout.night { background: #1e293b; color: #e2e8f0; }
 
@@ -100,6 +113,9 @@ input[type="range"] { flex: 1; accent-color: var(--cool); width: 100%; }
 .chart .short-line { fill: none; stroke: var(--muted); stroke-width: 1.6; stroke-dasharray: 3 3; }
 .chart .now { stroke: var(--sun); stroke-width: 2; }
 .chart .best { fill: #fff; stroke: var(--cool); stroke-width: 2.5; }
+.chart .temp-line { fill: none; stroke: #dc2626; stroke-width: 1.4; opacity: 0.7; }
+.chart .axis.temp { fill: #dc2626; }
+.key.temp { background: #dc2626; opacity: .7; }
 .chart figcaption { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
 .key { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin: 0 3px 0 6px; }
 .key.cool { background: var(--cool); }

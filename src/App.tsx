@@ -5,7 +5,9 @@ import DayChart from "./components/DayChart.tsx";
 import { overpassQuery, parseOverpass, type Area } from "./lib/osm.ts";
 import { projection } from "./lib/geo.ts";
 import { ShadeModel, edgeSun } from "./lib/shade.ts";
-import { buildGraph, findRoute, nearestNode, pathNodes, routeStats, type RouteStats } from "./lib/route.ts";
+import { buildGraph, findRoute, isSteps, nearestNode, pathNodes, routeStats, type RouteStats } from "./lib/route.ts";
+import { directions, PACES } from "./lib/directions.ts";
+import { atMinute, fetchHourly, heatLevel, type Hourly } from "./lib/weather.ts";
 import { daylight, formatMinutes, nowIn, sunPosition, tzOffsetMinutes, zonedTime } from "./lib/sun.ts";
 import { bestTime, dayProfile, networkShade, stopsNear, sunTraps } from "./lib/analysis.ts";
 
@@ -40,6 +42,11 @@ export default function App() {
   const [focus, setFocus] = useState<[number, number] | null>(null);
   const [tab, setTab] = useState<"walk" | "trees">("walk");
   const [copied, setCopied] = useState(false);
+  const [avoidSteps, setAvoidSteps] = useState(params.get("steps") === "0");
+  const [pace, setPace] = useState<(typeof PACES)[number]["id"]>((params.get("pace") as "normal") ?? "normal");
+  const [weather, setWeather] = useState<Hourly | null>(null);
+  const [shared, setShared] = useState(false);
+  const speed = PACES.find((p) => p.id === pace)?.speed ?? 1.3;
   const mapRef = useRef<L.Map | null>(null);
 
   const loadArea = useCallback(async (id: string, keepPins = false) => {
@@ -82,8 +89,8 @@ export default function App() {
     const pos = sunPosition(zonedTime(date, minutes, area.tz), area.origin[0], area.origin[1]);
     model.setSun(pos);
     const shadows = model.shadowPolygons();
-    const { sun } = edgeSun(model, area);
-    return { pos, shadows, sun, night: !model.up };
+    const { sun, side } = edgeSun(model, area);
+    return { pos, shadows, sun, side, night: !model.up };
   }, [area, model, date, minutes]);
 
   const routes = useMemo(() => {
@@ -91,15 +98,30 @@ export default function App() {
     const src = nearestNode(area, ...proj.toXY(...start));
     const dst = nearestNode(area, ...proj.toXY(...end));
     const sun = scene.sun;
-    const shortest = findRoute(area, graph, src, dst, (e) => area.edges[e].len);
-    const coolest = findRoute(area, graph, src, dst, (e) => area.edges[e].len * (1 + heat * sun[e]));
+    const blocked = (e: number) => avoidSteps && isSteps(area, e);
+    const shortest = findRoute(area, graph, src, dst, (e) => (blocked(e) ? Infinity : area.edges[e].len));
+    const coolest = findRoute(area, graph, src, dst, (e) => (blocked(e) ? Infinity : area.edges[e].len * (1 + heat * sun[e])));
     if (!shortest || !coolest) return null;
+    const coolNodes = pathNodes(area, coolest, src);
     return {
       src,
-      shortest: { edges: shortest, nodes: pathNodes(area, shortest, src), stats: routeStats(area, shortest, sun) },
-      coolest: { edges: coolest, nodes: pathNodes(area, coolest, src), stats: routeStats(area, coolest, sun) },
+      shortest: { edges: shortest, nodes: pathNodes(area, shortest, src), stats: routeStats(area, shortest, sun, speed) },
+      coolest: { edges: coolest, nodes: coolNodes, stats: routeStats(area, coolest, sun, speed), steps: directions(area, coolest, coolNodes, sun, scene.side) },
     };
-  }, [area, graph, scene, proj, start, end, heat]);
+  }, [area, graph, scene, proj, start, end, heat, avoidSteps, speed]);
+
+  // Real temperatures for this place and day
+  useEffect(() => {
+    if (!area) return;
+    let alive = true;
+    setWeather(null);
+    fetchHourly(area.origin[0], area.origin[1], date, area.tz).then((w) => alive && setWeather(w));
+    return () => { alive = false; };
+  }, [area, date]);
+  const feels = atMinute(weather?.feels, minutes);
+  const temp = atMinute(weather?.temp, minutes);
+  const uv = atMinute(weather?.uv, minutes);
+  const heatInfo = heatLevel(feels);
 
   // Shade on both routes across the day (paths fixed), for the chart and the best-time tip
   const coolKey = routes?.coolest.edges.join(",");
@@ -119,8 +141,10 @@ export default function App() {
   useEffect(() => {
     if (!area || !start || !end) return;
     const q = new URLSearchParams({ area: area.id, date, t: String(minutes), a: start.map((v) => v.toFixed(5)).join(","), b: end.map((v) => v.toFixed(5)).join(",") });
+    if (avoidSteps) q.set("steps", "0");
+    if (pace !== "normal") q.set("pace", pace);
     if (area.id !== "custom") history.replaceState(null, "", `?${q}`);
-  }, [area, date, minutes, start, end]);
+  }, [area, date, minutes, start, end, avoidSteps, pace]);
 
   // Play the day: watch the shadows sweep across the streets
   useEffect(() => {
@@ -162,6 +186,32 @@ export default function App() {
     }
   };
 
+  const locate = () => {
+    if (!navigator.geolocation || !area) return setError("Your browser can't share its location.");
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        const [s0, w0, n0, e0] = area.bounds;
+        if (coords.latitude < s0 || coords.latitude > n0 || coords.longitude < w0 || coords.longitude > e0) {
+          setError("You're outside this area. Move the map to your neighbourhood and tap Scan this view.");
+          mapRef.current?.setView([coords.latitude, coords.longitude], 16);
+          return;
+        }
+        setStart([coords.latitude, coords.longitude]);
+      },
+      () => setError("Couldn't get your location (permission denied or unavailable)."),
+      { enableHighAccuracy: true, timeout: 10_000 },
+    );
+  };
+
+  const share = async () => {
+    const url = location.href;
+    const text = c && s ? `A ${Math.round(c.shade * 100)}% shaded walk on Shadewalk 🌳` : "Shadewalk: walk in the shade 🌳";
+    if (navigator.share) { try { await navigator.share({ title: "Shadewalk", text, url }); return; } catch { /* cancelled */ } }
+    await navigator.clipboard?.writeText(url).catch(() => {});
+    setShared(true);
+    setTimeout(() => setShared(false), 2500);
+  };
+
   const pick = (ll: [number, number]) => (pinMode === "start" ? setStart(ll) : setEnd(ll));
 
   const useNow = () => {
@@ -190,7 +240,7 @@ export default function App() {
     const list = traps.slice(0, 5).map((t, i) => `${i + 1}. ${t.name}: ${Math.round(t.length)} m, ${Math.round(t.sunShare * 100)}% in direct sun`).join("\n");
     return `Dear ${area.city.split(",")[0]} city council,
 
-I walk in ${area.name}, and on hot afternoons some streets have almost no shade. I used Shadewalk, a free tool that models shade from buildings and trees using OpenStreetMap, to check ${new Date(date + "T12:00").toLocaleDateString("en-GB", { day: "numeric", month: "long" })} at ${formatMinutes(minutes)}. These streets were the worst:
+I walk in ${area.name}, and on hot afternoons some streets have almost no shade. I used Shadewalk, a free tool that models shade from buildings and trees using OpenStreetMap, to check ${new Date(date + "T12:00").toLocaleDateString("en-GB", { day: "numeric", month: "long" })} at ${formatMinutes(minutes)}. ${feels != null ? `It felt like ${Math.round(feels)} °C. ` : ""}These streets were the worst:
 
 ${list}
 
@@ -254,6 +304,15 @@ Thank you,
             <button className="chip" onClick={() => setMinutes(18 * 60)}>6pm</button>
           </div>
           <p className="sunline">{sunLine}</p>
+          {temp != null && (
+            <p className="sunline">
+              🌡️ {Math.round(temp)}°C, feels like {Math.round(feels ?? temp)}°C{uv != null && uv >= 1 ? ` · UV ${Math.round(uv)}` : ""}
+              <span className="muted small"> · {weather?.source === "archive" ? "recorded" : "forecast"}, Open-Meteo</span>
+            </p>
+          )}
+          {heatInfo.level >= 2 && (
+            <p className={`heat heat-${heatInfo.level}`} role="alert"><strong>⚠️ {heatInfo.label}.</strong> {heatInfo.advice}</p>
+          )}
         </section>
 
         <nav className="tabs" role="tablist">
@@ -266,6 +325,7 @@ Thank you,
             <section className="block">
               <div className="row">
                 <span className="label">Tap the map to move</span>
+                <button className="chip" onClick={locate} title="Start from where you are">📍 Me</button>
                 <div className="seg" role="radiogroup" aria-label="Which pin to move">
                   <button role="radio" aria-checked={pinMode === "start"} className={pinMode === "start" ? "on" : ""} onClick={() => setPinMode("start")}>A start</button>
                   <button role="radio" aria-checked={pinMode === "end"} className={pinMode === "end" ? "on" : ""} onClick={() => setPinMode("end")}>B destination</button>
@@ -290,9 +350,36 @@ Thank you,
                   <label className="label" htmlFor="heat">How much do you want to avoid the sun?</label>
                   <input id="heat" type="range" min={0.5} max={10} step={0.5} value={heat} onChange={(e) => setHeat(Number(e.target.value))} />
                   <div className="range-labels"><span>a little</span><span>at all costs</span></div>
+                  <div className="options">
+                    <label><input type="checkbox" checked={avoidSteps} onChange={(e) => setAvoidSteps(e.target.checked)} /> ♿ Step-free (avoid stairs)</label>
+                    <label>
+                      Pace{" "}
+                      <select value={pace} onChange={(e) => setPace(e.target.value as typeof pace)}>
+                        {PACES.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                      </select>
+                    </label>
+                    <button className="btn ghost small" onClick={share}>{shared ? "✓ Link copied" : "🔗 Share route"}</button>
+                  </div>
+                  {routes?.coolest.steps && routes.coolest.steps.length > 0 && (
+                    <details className="steps">
+                      <summary>🧭 Turn-by-turn ({routes.coolest.steps.length} steps)</summary>
+                      <ol>
+                        {routes.coolest.steps.map((st, i) => (
+                          <li key={i}>
+                            <span>{st.text}</span>
+                            <span className="muted small">
+                              {" "}· {Math.round(st.metres)} m · {st.covered ? "⛱️ covered" : st.sunShare < 0.25 ? "🌳 shady" : st.sunShare < 0.6 ? "⛅ some sun" : "☀️ sunny"}
+                              {st.side && !st.covered ? ` · walk on the ${st.side}` : ""}
+                            </span>
+                          </li>
+                        ))}
+                        <li><span>🏁 Arrive at B</span></li>
+                      </ol>
+                    </details>
+                  )}
                 </>
               ) : (
-                <p className="muted">{loading || "Finding routes…"}</p>
+                <p className="muted">{loading || (avoidSteps && area && graph ? "No step-free route between these points. Try moving a pin." : "Finding routes…")}</p>
               )}
             </section>
 
@@ -307,7 +394,7 @@ Thank you,
                     <strong>{Math.round(best.shade[0] * 100)}% shaded</strong> (vs {Math.round(c.shade * 100)}% now).
                   </p>
                 )}
-                <DayChart profile={profile} now={minutes} best={best.min} onPick={(m) => { setPlaying(false); setMinutes(m); }} />
+                <DayChart profile={profile} now={minutes} best={best.min} feels={weather?.feels ?? null} onPick={(m) => { setPlaying(false); setMinutes(m); }} />
               </section>
             )}
 
